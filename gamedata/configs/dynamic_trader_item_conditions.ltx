@@ -1,0 +1,19 @@
+;   this mod allows the use of weighted random item conditions, meaning any certain range of item conditions 
+;   can have a much higher chance of being chosen than any other range
+;
+;   Syntax:
+;   tradertype  =   probability_1, min_condition_1, max_condition_1 \ probability_2, min_condition_2, max_condition_2, \ etc...
+;   for example, 
+;   BARMAN = 10, 1, 30 \ 80, 31, 60 \ 10, 61, 100
+;   "10, 1, 30"
+;   10% chance this condition range is chosen
+;   min condition is 1
+;   max condition is 30
+;
+;   Basically, this means that 10% of the time, the item will have a condition between 1% and 30%
+;   And, 80% of the time, the item condition will be between 31% and 60%
+
+;   If you want a linear random distribution, i.e. every cond% has an equal 1-in-100 chance:
+;   =   100, 1, 100
+;
+;   
