@@ -95,8 +95,15 @@ local function weighted_random(pool)
 end
 local ini = ini_file("dynamic_trader_item_conditions.ltx")
 
-local function process_ini_weighted_ranges(weighted_ranges)
+
+
+--#region MonkeyPatch functions
+
+function mk_weighted_ranges(ranges)
+    return ranges
 end
+--#endregion
+
 
 local function process_ini()
     -- Empty the table
@@ -123,6 +130,8 @@ local function process_ini()
                             dbg_print("Working on %s with weighted_ranges %s", sec, weighted_ranges)
                             local ranges = str_explode(weighted_ranges, "\\") or weighted_ranges
                             dbg_print("ranges after \\ separate = %s", dbg_dump(ranges))
+
+                            ranges = mk_weighted_ranges(ranges)
 
                             -- Process each weight and range
                             local weights_ranges = {}
