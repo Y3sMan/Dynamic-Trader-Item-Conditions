@@ -1,0 +1,252 @@
+--[[
+    Dynamic Trader Item Conditions
+    YesMan
+    December 2nd, 2024
+
+    Configure potential conditions for traders' items
+--]]
+
+--#region Utilities
+local function tableLength(table)
+	local count = 0
+	if type(table) == "table" then
+		for _ in pairs(table) do count = count + 1 end
+	end
+	return count
+end
+
+--#endregion
+
+
+--#region debug
+-- MCM option to enable per mod debugging
+local DEBUG = true
+
+local function dbg_print(msg,...)
+    if not ym_debug then return end
+
+    ym_debug.set_modname("dynamic_trader_item_conditions")
+    ym_debug.dbg_print(msg,...)
+end
+
+local function dbg_dump(o)
+    if not ym_debug then return end
+
+    return ym_debug.dbg_dump(o)
+end
+
+local function newline()
+    if not ym_debug then return end
+    ym_debug.dbg_newline()
+end
+--#endregion
+
+local tradertypes = { 
+["0"] = "COMPANION",   
+["1"] = "MECHANIC",    
+["2"] = "BARMAN",      
+["3"] = "MEDIC",       
+["4"] = "SUPPLIER"
+ }
+
+
+-- 
+local function trim_trader_profile(profile_str)
+    local str_len = string.len(profile_str)
+    local i = string.find(profile_str, "trade_") or nil
+    local j = string.find(profile_str, ".ltx") or nil
+    if not j or not i then return nil end
+    j = j - 1
+
+    dbg_print("profile_str = %s, len = %s", profile_str, str_len)
+    dbg_print("i, j = %s, %s", i, j)
+
+
+    local final = string.sub(profile_str, i, j)
+    return final
+end
+
+local trader_weights_ranges = {}
+
+
+--[[
+ Expects pool to be in format
+ " { 
+ [1] = { ["min_cond"] = 1,["weight"] = 50,["max_cond"] = 25,} ,
+  [2] = { ["min_cond"] = 26,["weight"] = 50,["max_cond"] = 100,} ,
+ } 
+"
+--]]
+local function weighted_random(pool)
+    -- Adding up weights
+    local poolsize = 0
+    for k, v in pairs(pool) do
+        poolsize = poolsize + v["weight"]
+    end
+
+    local selection = math.random(1, poolsize)
+    for k, v in pairs(pool) do
+        selection = selection - v["weight"]
+        -- Spit out the range to use
+        if (selection <= 0) then
+            return pool[k]
+        end
+    end
+end
+local ini = ini_file("dynamic_trader_item_conditions.ltx")
+
+local function process_ini_weighted_ranges(weighted_ranges)
+end
+
+local function process_ini()
+    -- Empty the table
+    trader_weights_ranges = {}
+
+    local n_traders = ini:line_count("trader_configs") or 0
+    if n_traders > 0 then
+        for i = 0, n_traders-1 do
+            local result, trader, tmp = ini:r_line_ex("trader_configs", i, "", "")
+
+            if trader and tmp then
+                -- dbg_print("Found trader %s", trader)
+                local n_itms = ini:line_count(trader) or 0
+                if n_itms > 0 then
+                    dbg_print("Processing trader %s with %s items", trader, n_itms)
+                    -- trader_weights_ranges[trader] = {}
+
+                    local trader_table = {}
+                    -- Process each line
+                    for j=0,n_itms-1 do 
+                        -- Process each section 
+                        local result, sec, weighted_ranges = ini:r_line_ex(trader, j, "", "")
+                        if sec and weighted_ranges then
+                            dbg_print("Working on %s with weighted_ranges %s", sec, weighted_ranges)
+                            local ranges = str_explode(weighted_ranges, "\\") or weighted_ranges
+                            dbg_print("ranges after \\ separate = %s", dbg_dump(ranges))
+
+                            -- Process each weight and range
+                            local weights_ranges = {}
+                            for k,v in pairs(ranges) do
+                                local range = str_explode(v, ",") or v
+                                dbg_print("range after , separate = %s", dbg_dump(range))
+                                local weight = range[1]
+                                local min_cond = range[2]
+                                local max_cond = range[3]
+
+                                local weight_range = {
+                                    ["weight"] = weight,
+                                    ["min_cond"] = min_cond,
+                                    ["max_cond"] = max_cond
+                                }
+                                table.insert(weights_ranges, weight_range)
+                            end
+                            -- table.insert(trader_table, weights_ranges)
+                            trader_table[sec] = weights_ranges 
+                        end
+                    end
+                    trader_weights_ranges[trader] = trader_table
+                    dbg_print("trader_table = %s", dbg_dump(trader_table))
+                    dbg_print("trader_weights_ranges = %s", dbg_dump(trader_weights_ranges))
+
+                end
+            end
+        end
+    end
+end
+
+local function init()
+    process_ini()
+end
+
+function change_item_conds(npc)
+    local tradertype_int = tostring( trader_autoinject.get_trader_type(npc) )
+    local tradertype_str = tradertypes[tradertype_int] or "SUPPLIER"
+    
+    local npc_id = npc:id()
+    local trader_profile = trade_manager.get_trade_profile(npc_id, "cfg_ltx")
+    trader_profile = trim_trader_profile(trader_profile) or nil
+
+    dbg_print("tradertype_str = %s", tradertype_str)
+    dbg_print("trader_profile = %s", trader_profile)
+    dbg_print("trimmed trader_profile = %s", trim_trader_profile(trader_profile))
+    dbg_print("trader_weights_ranges = %s", dbg_dump(trader_weights_ranges))
+
+    local itms_weights_ranges = trader_weights_ranges[tradertype_str] or {}
+    if trader_profile and trader_weights_ranges[trader_profile] then
+        itms_weights_ranges = trader_weights_ranges[trader_profile] or {}
+    end
+    dbg_print("itms_weights_ranges = %s", dbg_dump(itms_weights_ranges))
+
+
+    function itr(temp, item)
+        if not item then return end
+        if IsItem("multiuse", nil, item) or IsArtefact(item) then return end
+
+        local sec = item:section()
+        dbg_print("Iterating over item %s", sec)
+        if sec and ini_sys:section_exist(sec) then
+            dbg_print("sec exists")
+
+            local kind = SYS_GetParam(0, sec, "kind") or nil
+
+            if (kind and itms_weights_ranges[kind]) then
+                dbg_print("found kind %s in config", kind)
+                local weights_ranges = itms_weights_ranges[kind]
+                dbg_print("weights_ranges = %s", dbg_dump(weights_ranges))
+                local r = weighted_random(weights_ranges)
+                dbg_print("weighted_random(weighted_ranges) = %s", dbg_dump(r))
+                local min = r["min_cond"]
+                local max = r["max_cond"]
+
+                item:set_condition(math.random(min, max) / 100)
+                dbg_print("Kind %s :  min = %s, max = %s", kind,  min, max)
+            end
+
+
+            -- Item section takes priority over item kind generalization
+            if itms_weights_ranges[sec] then
+                dbg_print("found sec %s in config", sec)
+                local weights_ranges = itms_weights_ranges[sec]
+                dbg_print("weights_ranges = %s", dbg_dump(weights_ranges))
+
+                local r = weighted_random(weights_ranges)
+                dbg_print("weighted_random(weighted_ranges) = %s", dbg_dump(r))
+                local min = r["min_cond"]
+                local max = r["max_cond"]
+
+                item:set_condition(math.random(min, max) / 100)
+
+                dbg_print("Item %s :  min = %s, max = %s", sec, min, max)
+            end
+
+        end
+        -- if string.find(item:section(), "")
+    end
+
+    npc:iterate_inventory(itr)
+end
+
+
+--#region Main
+-- Loop back into trader_autoinject
+
+TraderAuto = trader_autoinject.update
+
+function trader_autoinject.update(npc)
+    -- Normal trader autoinject
+    TraderAuto(npc)
+    if zz_trader_destokifier then
+        ResetTimeEvent("destockify" .. npc:id(), "destockify" .. npc:id(), 0)
+    end
+    -- Change condition of parts
+    change_item_conds(npc)
+end
+
+function on_game_start()
+    RegisterScriptCallback("on_actor_first_update", process_ini)
+
+    init()
+end
+
+--#endregion
+
