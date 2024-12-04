@@ -6,17 +6,6 @@
     Configure potential conditions for traders' items
 --]]
 
---#region Utilities
-local function tableLength(table)
-	local count = 0
-	if type(table) == "table" then
-		for _ in pairs(table) do count = count + 1 end
-	end
-	return count
-end
-
---#endregion
-
 
 --#region debug
 -- MCM option to enable per mod debugging
@@ -41,16 +30,17 @@ local function newline()
 end
 --#endregion
 
-local tradertypes = { 
-["0"] = "COMPANION",   
-["1"] = "MECHANIC",    
-["2"] = "BARMAN",      
-["3"] = "MEDIC",       
-["4"] = "SUPPLIER"
- }
+
+--#region Utilities
+local function tableLength(table)
+	local count = 0
+	if type(table) == "table" then
+		for _ in pairs(table) do count = count + 1 end
+	end
+	return count
+end
 
 
--- 
 local function trim_trader_profile(profile_str)
     local str_len = string.len(profile_str)
     local i = string.find(profile_str, "trade_") or nil
@@ -65,9 +55,6 @@ local function trim_trader_profile(profile_str)
     local final = string.sub(profile_str, i, j)
     return final
 end
-
-local trader_weights_ranges = {}
-
 
 --[[
  Expects pool to be in format
@@ -93,6 +80,25 @@ local function weighted_random(pool)
         end
     end
 end
+
+
+
+--#endregion
+
+
+local tradertypes = { 
+["0"] = "COMPANION",   
+["1"] = "MECHANIC",    
+["2"] = "BARMAN",      
+["3"] = "MEDIC",       
+["4"] = "SUPPLIER"
+ }
+
+
+-- 
+local trader_weights_ranges = {}
+
+
 local ini = ini_file("dynamic_trader_item_conditions.ltx")
 
 
@@ -109,20 +115,24 @@ local function process_ini()
     -- Empty the table
     trader_weights_ranges = {}
 
+    -- Process all traders in [trader_configs] section
     local n_traders = ini:line_count("trader_configs") or 0
     if n_traders > 0 then
         for i = 0, n_traders-1 do
             local result, trader, tmp = ini:r_line_ex("trader_configs", i, "", "")
 
+            -- Process each individual trader
             if trader and tmp then
                 -- dbg_print("Found trader %s", trader)
+
+                --Check if that trader has a defined section with a non-zero amount of lines
                 local n_itms = ini:line_count(trader) or 0
                 if n_itms > 0 then
                     dbg_print("Processing trader %s with %s items", trader, n_itms)
                     -- trader_weights_ranges[trader] = {}
 
                     local trader_table = {}
-                    -- Process each line
+                    -- Process each line of items
                     for j=0,n_itms-1 do 
                         -- Process each section 
                         local result, sec, weighted_ranges = ini:r_line_ex(trader, j, "", "")
@@ -189,6 +199,7 @@ function change_item_conds(npc)
 
     function itr(temp, item)
         if not item then return end
+        -- Ignore multiuse items and artefacts
         if IsItem("multiuse", nil, item) or IsArtefact(item) then return end
 
         local sec = item:section()
