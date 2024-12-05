@@ -126,7 +126,7 @@ local function process_ini()
                 -- dbg_print("Found trader %s", trader)
 
                 --Check if that trader has a defined section with a non-zero amount of lines
-                local n_itms = ini:line_count(trader) or 0
+                local n_itms = ini:section_exist(trader) and  ini:line_count(trader) or 0
                 if n_itms > 0 then
                     dbg_print("Processing trader %s with %s items", trader, n_itms)
                     -- trader_weights_ranges[trader] = {}
@@ -167,6 +167,8 @@ local function process_ini()
                     dbg_print("trader_table = %s", dbg_dump(trader_table))
                     dbg_print("trader_weights_ranges = %s", dbg_dump(trader_weights_ranges))
 
+                else 
+                    dbg_print("trader %s has 0 lines or doesn't exist", trader)
                 end
             end
         end
