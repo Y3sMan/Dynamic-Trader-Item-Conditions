@@ -112,21 +112,29 @@ end
 
 
 local function process_ini()
+    dbg_print("Processing Ini")
     -- Empty the table
     trader_weights_ranges = {}
+    dbg_print("all sections = %s", dbg_dump(ini:get_sections()))
+    local all_sections = ini:get_sections()
 
     -- Process all traders in [trader_configs] section
     local n_traders = ini:line_count("trader_configs") or 0
     if n_traders > 0 then
         for i = 0, n_traders-1 do
-            local result, trader, tmp = ini:r_line_ex("trader_configs", i, "", "")
+            -- Trader must be set to true
+            local result, trader, allowConfigure = ini:r_line_ex("trader_configs", i, "", "")
+            dbg_print("trader %s, allowConfigure = %s", trader, allowConfigure)
+            dbg_print("section exist = %s", ini:section_exist(string.lower(trader)))
+            dbg_print("all_sections contains trader = %s", tableContains(all_sections, string.lower(trader)))
 
             -- Process each individual trader
-            if trader and tmp then
+            if trader and allowConfigure and tableContains(all_sections, string.lower(trader)) then
                 -- dbg_print("Found trader %s", trader)
 
                 --Check if that trader has a defined section with a non-zero amount of lines
-                local n_itms = ini:section_exist(trader) and  ini:line_count(trader) or 0
+                local n_itms =  ini:line_count(trader) or 0
+                -- dbg_print("section_exist = %s, line_count = %s", ini:section_exist(trader) or nil, ini:line_count(trader))
                 if n_itms > 0 then
                     dbg_print("Processing trader %s with %s items", trader, n_itms)
                     -- trader_weights_ranges[trader] = {}
@@ -170,6 +178,8 @@ local function process_ini()
                 else 
                     dbg_print("trader %s has 0 lines or doesn't exist", trader)
                 end
+            else
+                    dbg_print("trader %s is blacklisted or doesn't exist", trader)
             end
         end
     end
@@ -189,7 +199,10 @@ function change_item_conds(npc)
 
     dbg_print("tradertype_str = %s", tradertype_str)
     dbg_print("trader_profile = %s", trader_profile)
-    dbg_print("trimmed trader_profile = %s", trim_trader_profile(trader_profile))
+
+    trader_profile = trim_trader_profile(trader_profile) or nil
+    dbg_print("trimmed trader_profile = %s", trader_profile)
+
     dbg_print("trader_weights_ranges = %s", dbg_dump(trader_weights_ranges))
 
     local itms_weights_ranges = trader_weights_ranges[tradertype_str] or {}
