@@ -13,6 +13,7 @@ local DEBUG = true
 
 local function dbg_print(msg,...)
     if not ym_debug then return end
+    if not DEBUG then return end
 
     ym_debug.set_modname("dynamic_trader_item_conditions")
     ym_debug.dbg_print(msg,...)
@@ -62,7 +63,7 @@ local function trim_trader_profile(profile_str)
     dbg_print("i, j = %s, %s", i, j)
 
 
-    local final = string.sub(profile_str, i, j)
+    local final = string.sub(profile_str, i, j) or profile_str
     return final
 end
 
@@ -91,10 +92,29 @@ local function weighted_random(pool)
     end
 end
 
+local function get_trader_type_from_profile(cfg)
+    -- cfg can be the full path or just the filename
+    local companion = trader_autoinject.COMPANION
+    local mechanic = trader_autoinject.MECHANIC
+    local barman = trader_autoinject.BARMAN
+    local medic = trader_autoinject.MEDIC
+    local supplier = trader_autoinject.SUPPLIER
+
+    if string.find(cfg, "trade_generic_mechanic") then
+        return mechanic
+    elseif string.find(cfg, "trade_generic_barman") then
+        return barman
+    elseif string.find(cfg, "trade_generic_medic") then
+        return medic
+    else
+        return supplier
+    end
+end
 
 
 --#endregion
 
+local display_trader_info = true
 
 local tradertypes = { 
 ["0"] = "COMPANION",   
@@ -109,7 +129,7 @@ local tradertypes = {
 local trader_weights_ranges = {}
 
 
-local ini = ini_file("dynamic_trader_item_conditions.ltx")
+local ini = ini_file_ex("dynamic_trader_item_conditions.ltx")
 
 
 
@@ -207,7 +227,6 @@ function change_item_conds(npc)
     
     local npc_id = npc:id()
     local trader_profile = trade_manager.get_trade_profile(npc_id, "cfg_ltx")
-    trader_profile = trim_trader_profile(trader_profile) or nil
 
     dbg_print("tradertype_str = %s", tradertype_str)
     dbg_print("trader_profile = %s", trader_profile)
@@ -277,6 +296,32 @@ function change_item_conds(npc)
     npc:iterate_inventory(itr)
 end
 
+local last_trader_profile = nil
+local function list_trader_cost_information(kind, obj, profile, calculated_cost, ret)
+-- arguments:
+	-- kind			: can be "multiuse", "ammo" or "condition_based" to tell what kind of calculation happened beforehand
+	-- obj				: game object of the item
+	-- profile			: table with information about the trading, see below
+	-- calculated_cost	: vanilla final cost
+	-- ret				: table, set a number on key "new_cost" to override the calulated cost
+
+-- profile values:
+	-- cfg : path to trader config
+	-- list : which section is used for prices, usually just trade_generic_buy or trade_generic_sell
+	-- mode : if 1 it means its calculating the price of selling to npc, if 2 means its calculating the price of buying from npc
+	-- cond_factor : same value of config
+	-- cond_exponent : same value of config
+	-- discount : current discount
+
+    if not display_trader_info then return end
+    if last_trader_profile ~= profile then
+        local tradertype_int = get_trader_type_from_profile(profile.cfg)
+        local tradertype_str = tradertypes[tostring(tradertype_int)] or "SUPPLIER"
+        printf("Dynamic Trader Item Conditions: Trader Type %s, Trade Profile Path %s", tradertype_str, profile.cfg)
+        last_trader_profile = profile
+    end
+end
+
 
 --#region Main
 -- Loop back into trader_autoinject
@@ -294,7 +339,8 @@ function trader_autoinject.update(npc)
 end
 
 function on_game_start()
-    RegisterScriptCallback("on_actor_first_update", process_ini)
+    RegisterScriptCallback("actor_on_first_update", process_ini)
+    RegisterScriptCallback("on_get_item_cost", list_trader_cost_information)
 
     init()
 end
