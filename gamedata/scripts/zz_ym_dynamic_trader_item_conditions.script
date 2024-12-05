@@ -41,6 +41,16 @@ local function tableLength(table)
 end
 
 
+local function tableContains(table, element)
+  for _, value in pairs(table) do
+    if value == element then
+      return true
+    end
+  end
+  return false
+end
+
+
 local function trim_trader_profile(profile_str)
     local str_len = string.len(profile_str)
     local i = string.find(profile_str, "trade_") or nil
@@ -177,9 +187,11 @@ local function process_ini()
 
                 else 
                     dbg_print("trader %s has 0 lines or doesn't exist", trader)
+                    trader_weights_ranges[trader] = false
                 end
             else
                     dbg_print("trader %s is blacklisted or doesn't exist", trader)
+                    trader_weights_ranges[trader] = false
             end
         end
     end
@@ -206,10 +218,14 @@ function change_item_conds(npc)
     dbg_print("trader_weights_ranges = %s", dbg_dump(trader_weights_ranges))
 
     local itms_weights_ranges = trader_weights_ranges[tradertype_str] or {}
-    if trader_profile and trader_weights_ranges[trader_profile] then
-        itms_weights_ranges = trader_weights_ranges[trader_profile] or {}
+    if trader_profile and trader_weights_ranges[trader_profile] ~= nil then
+        itms_weights_ranges = trader_weights_ranges[trader_profile] 
     end
     dbg_print("itms_weights_ranges = %s", dbg_dump(itms_weights_ranges))
+    if not itms_weights_ranges then
+        printf("Dynamic Trader Item Conditions: Trader profile %s is blacklisted or not listed in the config file", trader_profile)
+        return
+    end
 
 
     function itr(temp, item)
