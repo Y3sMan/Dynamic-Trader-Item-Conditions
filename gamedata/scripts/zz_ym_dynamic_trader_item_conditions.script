@@ -314,11 +314,32 @@ local function list_trader_cost_information(kind, obj, profile, calculated_cost,
 	-- discount : current discount
 
     if not display_trader_info then return end
-    if last_trader_profile ~= profile then
+    -- Only process each trader once
+    if obj and obj:id() and  obj:id() ~= last_id then
         local tradertype_int = get_trader_type_from_profile(profile.cfg)
         local tradertype_str = tradertypes[tostring(tradertype_int)] or "SUPPLIER"
         printf("Dynamic Trader Item Conditions: Trader Type %s, Trade Profile Path %s", tradertype_str, profile.cfg)
         last_trader_profile = profile
+        last_id = obj and obj:id()
+        --#region Condition based 
+        dbg_print("Reverting condition based cost calculation")
+        dbg_print("old_cost = %s", old_cost)
+
+        -- Reverses the cost calculation from get_item_cost.script, to cancel out the condition factor on price
+        local function negate_cond_exp(old_cost, item_cond, cond_exp)
+            local new_cost = nil
+            new_cost = old_cost / math.pow( (0.9*item_cond + 0.1), cond_exp > 0 and cond_exp or 0.75)
+            return new_cost
+        end
+
+        if kind == "condition_based" then 
+            new_cost = negate_cond_exp(calculated_cost, item_cond, profile_cond_exponent)
+        end
+
+            dbg_print("new_cost = %s", new_cost)
+
+        --#endregion
+
     end
 end
 
