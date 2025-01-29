@@ -22,9 +22,23 @@
 
 ; ADD TRADER-SPECIFIC PROFILES HERE 
 [trader_configs]
-BARMAN = true
+BARMAN = true ; if trader is set to true here, but not defined in its own section, it will be overwritten and set to false in script
 MECHANIC = true
 SUPPLIER = true
+MEDIC = false
+; trade_duty = false
+
+[SUPPLIER]
+prt_w  = 15, 1, 30 \ 87, 31, 60 \ 2, 61, 80 \ 1, 81, 100 
+prt_w_buy_exponent = 1
+prt_w_sell_exponent =  2.75
+prt_w_cond_factor =  0.10
+
+i_device = 100, 1, 1
+detector_simple = false
+batteries_dead = 100, 30, 100
+batteries_dead_sell_exponent = 3.75
+; trade_duty = false
 
 
 ; [BARMAN]
@@ -33,7 +47,3 @@ SUPPLIER = true
 
 ; [MECHANIC]
 ; prt_w =  95, 80, 90 \ 5, 91, 100 
-
-; [SUPPLIER]
-; prt_w  = 15, 1, 30 \ 87, 31, 60 \ 2, 61, 80 \ 1, 81, 100
-; i_device = 100, 1, 1

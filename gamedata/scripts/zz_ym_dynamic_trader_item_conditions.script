@@ -126,7 +126,72 @@ local tradertypes = {
 
 
 -- 
-local trader_weights_ranges = {}
+local traders_information = {}
+--[[
+    traders_information should look much like:
+    `
+
+
+    {
+        ["SUPPLIER"]  = {
+
+            ["i_device"] = {
+                ["Weights"] = {
+                    {
+                        ["min_cond"] = 10,
+                        ["max_cond"] = 100,
+                        ["weight"] = 80
+                    },
+                    {
+                        ["min_cond"] = 1,
+                        ["max_cond"] = 9,
+                        ["weight"] = 20
+                    }
+                },
+                "Buy_Exp" = 1,
+                "Sell_Exp" = 1,
+                "Cond_Factor" = 0.10
+            },
+
+            ["parts_w"] = {
+                ["Weights"] = {
+                    {
+                        ["min_cond"] = 10,
+                        ["max_cond"] = 100,
+                        ["weight"] = 80
+                    },
+                    {
+                        ["min_cond"] = 1,
+                        ["max_cond"] = 9,
+                        ["weight"] = 20
+                    }
+                },
+                "Buy_Exp" = 1,
+                "Sell_Exp" = 1,
+                "Cond_Factor" = 0.10
+            },
+
+            ["batteries_dead"] = {
+                ["Weights"] = {
+                    {
+                        ["min_cond"] = 10,
+                        ["max_cond"] = 100,
+                        ["weight"] = 80
+                    },
+                    {
+                        ["min_cond"] = 1,
+                        ["max_cond"] = 9,
+                        ["weight"] = 20
+                    }
+                },
+                "Buy_Exp" = 1,
+                "Sell_Exp" = 1,
+                "Cond_Factor" = 0.10
+            }
+        },
+    }
+    `
+--]]
 
 
 local ini = ini_file_ex("dynamic_trader_item_conditions.ltx")
@@ -138,17 +203,26 @@ local ini = ini_file_ex("dynamic_trader_item_conditions.ltx")
 function mk_weighted_ranges(ranges)
     return ranges
 end
+
+function mk_item_cost1(old_cost, new_cost)
+    return new_cost
+end
+
+function mk_item_cost2(old_cost, new_cost)
+    return new_cost
+end
+
 --#endregion
 
 
 local function process_ini()
     dbg_print("Processing Ini")
     -- Empty the table
-    trader_weights_ranges = {}
+    traders_information = {}
     dbg_print("all sections = %s", dbg_dump(ini:get_sections()))
     local all_sections = ini:get_sections()
 
-    -- Process all traders in [trader_configs] section
+    -- ===== Process all traders in [trader_configs] section
     local n_traders = ini:line_count("trader_configs") or 0
     if n_traders > 0 then
         for i = 0, n_traders-1 do
@@ -158,11 +232,11 @@ local function process_ini()
             dbg_print("section exist = %s", ini:section_exist(string.lower(trader)))
             dbg_print("all_sections contains trader = %s", tableContains(all_sections, string.lower(trader)))
 
-            -- Process each individual trader
+            -- ==== Process each individual trader
             if trader and allowConfigure and tableContains(all_sections, string.lower(trader)) then
                 -- dbg_print("Found trader %s", trader)
 
-                --Check if that trader has a defined section with a non-zero amount of lines
+                --=====Check if that trader has a defined section with a non-zero amount of lines
                 local n_itms =  ini:line_count(trader) or 0
                 -- dbg_print("section_exist = %s, line_count = %s", ini:section_exist(trader) or nil, ini:line_count(trader))
                 if n_itms > 0 then
@@ -170,20 +244,41 @@ local function process_ini()
                     -- trader_weights_ranges[trader] = {}
 
                     local trader_table = {}
-                    -- Process each line of items
+                    -- ===== Process each line of items
                     for j=0,n_itms-1 do 
                         -- Process each section 
-                        local result, sec, weighted_ranges = ini:r_line_ex(trader, j, "", "")
-                        if sec and weighted_ranges then
-                            dbg_print("Working on %s with weighted_ranges %s", sec, weighted_ranges)
-                            local ranges = str_explode(weighted_ranges, "\\") or weighted_ranges
+                        -- "properties" contains the contents after the "="
+                        local result, sec, values = ini:r_line_ex(trader, j, "", "")
+                        if not sec or not values then goto continue end
+                        -- Build out the section table
+                        local sec_table = {
+                            Weights = {},
+                            Buy_Exp = nil,
+                            Sell_Exp = nil,
+                            Cond_Factor = nil
+                        }
+                        --
+
+                        local weights_ranges = {}
+                        local buy_exp = nil
+                        local sell_exp = nil
+                        local cond_factor = nil
+
+                        -- Changing buy/sell exponents per item!
+                        -- change the condition buy factor per item!
+
+                        if string.find(sec, "_buy_exponent") then buy_exp = values 
+                        elseif string.find(sec, "_sell_exponent") then sell_exp = values 
+                        elseif string.find(sec, "_cond_factor") then cond_factor = values 
+                        else
+                            dbg_print("Working on %s with weighted_ranges %s", sec, values)
+                            local ranges = str_explode(values, "\\") or values
                             dbg_print("ranges after \\ separate = %s", dbg_dump(ranges))
 
                             ranges = mk_weighted_ranges(ranges)
 
                             -- Process each weight and range
-                            local weights_ranges = {}
-                            for k,v in pairs(ranges) do
+                            for k, v in pairs(ranges) do
                                 local range = str_explode(v, ",") or v
                                 dbg_print("range after , separate = %s", dbg_dump(range))
                                 local weight = range[1]
@@ -197,21 +292,34 @@ local function process_ini()
                                 }
                                 table.insert(weights_ranges, weight_range)
                             end
-                            -- table.insert(trader_table, weights_ranges)
-                            trader_table[sec] = weights_ranges 
                         end
-                    end
-                    trader_weights_ranges[trader] = trader_table
-                    dbg_print("trader_table = %s", dbg_dump(trader_table))
-                    dbg_print("trader_weights_ranges = %s", dbg_dump(trader_weights_ranges))
 
+                        if buy_exp or sell_exp or cond_factor then
+                            dbg_print("sec before %s", sec)
+                            sec = string.gsub(sec, "_buy_exponent", "") or sec
+                            sec = string.gsub(sec, "_sell_exponent", "") or sec
+                            sec = string.gsub(sec, "_cond_factor", "") or nil
+                            dbg_print("sec after %s", sec)
+                        end
+
+                        sec_table.Buy_Exp = sec and trader_table and trader_table[sec] and trader_table[sec].Buy_Exp or buy_exp or nil
+                        sec_table.Sell_Exp = sec and trader_table and trader_table[sec] and trader_table[sec].Sell_Exp or sell_exp or nil
+                        sec_table.Cond_Factor = sec and trader_table and trader_table[sec] and trader_table[sec].Cond_Factor or cond_factor or nil
+                        sec_table.Weights = sec and trader_table and trader_table[sec] and trader_table[sec].Weights or weights_ranges or nil
+
+                        trader_table[sec] = sec_table
+                        ::continue::
+                    end
+                    traders_information[trader] = trader_table
+                    dbg_print("trader_table = %s", dbg_dump(trader_table))
+                    dbg_print("trader_weights_ranges = %s", dbg_dump(traders_information))
                 else 
                     dbg_print("trader %s has 0 lines or doesn't exist", trader)
-                    trader_weights_ranges[trader] = false
+                    traders_information[trader] = false
                 end
             else
-                    dbg_print("trader %s is blacklisted or doesn't exist", trader)
-                    trader_weights_ranges[trader] = false
+                dbg_print("trader %s is blacklisted or doesn't exist", trader)
+                traders_information[trader] = false
             end
         end
     end
@@ -234,19 +342,22 @@ function change_item_conds(npc)
     trader_profile = trim_trader_profile(trader_profile) or nil
     dbg_print("trimmed trader_profile = %s", trader_profile)
 
-    dbg_print("trader_weights_ranges = %s", dbg_dump(trader_weights_ranges))
+    dbg_print("trader_weights_ranges = %s", dbg_dump(traders_information))
 
-    local itms_weights_ranges = trader_weights_ranges[tradertype_str] or {}
-    if trader_profile and trader_weights_ranges[trader_profile] ~= nil then
-        itms_weights_ranges = trader_weights_ranges[trader_profile] 
+    local trader_info = traders_information[tradertype_str] or {}
+
+    -- Use trader specific config if available
+    if trader_profile and traders_information[trader_profile] ~= nil then
+        trader_info = traders_information[trader_profile] 
     end
-    dbg_print("itms_weights_ranges = %s", dbg_dump(itms_weights_ranges))
-    if not itms_weights_ranges then
+    dbg_print("itms_weights_ranges = %s", dbg_dump(trader_info))
+    if not trader_info then
         printf("Dynamic Trader Item Conditions: Trader profile %s is blacklisted or not listed in the config file", trader_profile)
         return
     end
 
 
+    -- Iterate through trader inventory and set conditions
     function itr(temp, item)
         if not item then return end
         -- Ignore multiuse items and artefacts
@@ -258,10 +369,16 @@ function change_item_conds(npc)
             dbg_print("sec exists")
 
             local kind = SYS_GetParam(0, sec, "kind") or nil
+            local sec_info = kind and trader_info[kind] or {}
+            local sec_weights = sec_info and sec_info.Weights 
+            local isItemBlacklisted = trader_info and trader_info[sec] and trader_info[sec].Weights[1].weight == "false" and true or false
+            dbg_print("isItemBlacklisted = %s", isItemBlacklisted)
 
-            if (kind and itms_weights_ranges[kind]) then
+            if sec_weights and not isItemBlacklisted then
+                if trader_info and trader_info[sec] and not trader_info[sec].Weights then return end
+
                 dbg_print("found kind %s in config", kind)
-                local weights_ranges = itms_weights_ranges[kind]
+                local weights_ranges = trader_info[kind].Weights
                 dbg_print("weights_ranges = %s", dbg_dump(weights_ranges))
                 local r = weighted_random(weights_ranges)
                 dbg_print("weighted_random(weighted_ranges) = %s", dbg_dump(r))
@@ -274,9 +391,9 @@ function change_item_conds(npc)
 
 
             -- Item section takes priority over item kind generalization
-            if itms_weights_ranges[sec] then
+            if trader_info[sec] and not trader_info[sec].Weights then
                 dbg_print("found sec %s in config", sec)
-                local weights_ranges = itms_weights_ranges[sec]
+                local weights_ranges = trader_info[sec].Weights
                 dbg_print("weights_ranges = %s", dbg_dump(weights_ranges))
 
                 local r = weighted_random(weights_ranges)
@@ -296,22 +413,24 @@ function change_item_conds(npc)
     npc:iterate_inventory(itr)
 end
 
+-- TODO: Fix trading player item conditions always being 100%
 local last_trader_profile = nil
+local last_id = nil
 local function list_trader_cost_information(kind, obj, profile, calculated_cost, ret)
--- arguments:
-	-- kind			: can be "multiuse", "ammo" or "condition_based" to tell what kind of calculation happened beforehand
-	-- obj				: game object of the item
-	-- profile			: table with information about the trading, see below
-	-- calculated_cost	: vanilla final cost
-	-- ret				: table, set a number on key "new_cost" to override the calulated cost
+    -- arguments:
+        -- kind			: can be "multiuse", "ammo" or "condition_based" to tell what kind of calculation happened beforehand
+        -- obj				: game object of the item
+        -- profile			: table with information about the trading, see below
+        -- calculated_cost	: vanilla final cost
+        -- ret				: table, set a number on key "new_cost" to override the calulated cost
 
--- profile values:
-	-- cfg : path to trader config
-	-- list : which section is used for prices, usually just trade_generic_buy or trade_generic_sell
-	-- mode : if 1 it means its calculating the price of selling to npc, if 2 means its calculating the price of buying from npc
-	-- cond_factor : same value of config
-	-- cond_exponent : same value of config
-	-- discount : current discount
+    -- profile values:
+        -- cfg : path to trader config
+        -- list : which section is used for prices, usually just trade_generic_buy or trade_generic_sell
+        -- mode : if 1 it means its calculating the price of selling to npc, if 2 means its calculating the price of buying from npc
+        -- cond_factor : same value of config
+        -- cond_exponent : same value of config
+        -- discount : current discount
 
     if not display_trader_info then return end
     -- Only process each trader once
@@ -319,8 +438,64 @@ local function list_trader_cost_information(kind, obj, profile, calculated_cost,
         local tradertype_int = get_trader_type_from_profile(profile.cfg)
         local tradertype_str = tradertypes[tostring(tradertype_int)] or "SUPPLIER"
         printf("Dynamic Trader Item Conditions: Trader Type %s, Trade Profile Path %s", tradertype_str, profile.cfg)
+
         last_trader_profile = profile
         last_id = obj and obj:id()
+
+        local cfg = profile.cfg
+        cfg = trim_trader_profile(cfg) or nil
+        dbg_print("trimmed cfg = %s", cfg)
+        dbg_print("trader information = %s", dbg_dump(traders_information))
+        local trader_info = cfg and traders_information[cfg] or traders_information[tradertype_str] or nil
+
+        local obj_sec = obj:section()
+        local obj_kind = obj_sec and ini_sys:r_string_ex(obj_sec,"kind")
+
+        dbg_print("trader_info = %s", dbg_dump(trader_info))
+        dbg_print("section = %s", obj_sec)
+        dbg_print("kind = %s", obj_kind)
+        -- if not string.find(obj_kind, "i_device") then return end
+        -- printf("\n")
+
+        dbg_print("Item = %s", obj:section())
+        local item_cond = obj:condition()
+        local profile_cond_exponent = profile.cond_exponent -- depending on the mode, this is either buy_exp or sell_exp
+        local item_cond_exponent = nil
+        local discount = profile.discount -- trader buy/sell mults
+        local new_cost = nil
+        local old_cost = calculated_cost 
+
+        local item_exp = nil
+        -- Kind buy/sell exponents
+        local kind_info = trader_info and trader_info[obj_kind] or nil
+        if kind_info then
+            -- buy FROM player, sell TO npc
+            if profile.mode == 1 then 
+                item_exp = kind_info.Buy_Exp or 0
+            -- Buying from npc
+            elseif profile.mode == 2 then
+               item_exp = kind_info.Sell_Exp or 0
+            end
+        end
+        --
+
+        -- Section buy/sell exponents; overwrites kind exponents
+        local sec_info = trader_info and trader_info[obj_sec] or nil
+        if sec_info then
+            -- buy FROM player, sell TO npc
+            if profile.mode == 1 then 
+                item_exp = sec_info.Buy_Exp or 0
+            -- Buying from npc
+            elseif profile.mode == 2 then
+                item_exp = sec_info.Sell_Exp or 0
+            end
+        end
+
+        dbg_print("item_exp = %s", item_exp)
+
+
+
+
         --#region Condition based 
         dbg_print("Reverting condition based cost calculation")
         dbg_print("old_cost = %s", old_cost)
@@ -339,6 +514,47 @@ local function list_trader_cost_information(kind, obj, profile, calculated_cost,
             dbg_print("new_cost = %s", new_cost)
 
         --#endregion
+
+
+
+        local function CalcCost_cond_exp(old_cost,  cond, exponent)
+            local new_cost = nil
+            if (not old_cost or not cond or not exponent) or (exponent == 0) then return old_cost end
+
+            new_cost = old_cost *  math.pow((cond * 0.9 + 0.1),  exponent or 0.75)
+
+            return new_cost
+        end
+        -- Monkey patch opportunity
+        new_cost = mk_item_cost1(old_cost, new_cost)
+
+        new_cost = CalcCost_cond_exp(new_cost, item_cond, item_exp)
+
+        -- Monkey patch opportunity
+        new_cost = mk_item_cost2(nil, new_cost)
+
+
+
+        dbg_print("profile.mode = %s", profile.mode)
+        --[[
+        profile.mode:
+            -- mode : if 1 it means its calculating the price of selling to npc, if 2 means its calculating the price of buying from npc
+                        = 1     = Sell to trader
+                            will use the Trader's exponents and factors
+                        = 2     = Buy from trader
+                            will use the Player's exponents and factors
+        --]]
+
+        dbg_print("profile.cfg = %s", profile.cfg)
+        dbg_print("profile.cond_factor = %s", profile.cond_factor)
+        dbg_print("profile.cond_exponent = %s", profile_cond_exponent)
+        dbg_print("item_cond = %s", item_cond)
+        dbg_print("calculated_cost = %s", calculated_cost)
+        dbg_print("old_cost = %s", old_cost)
+
+
+        -- Finally set item cost
+        ret.new_cost = new_cost 
 
     end
 end
